@@ -33,7 +33,9 @@ export default function DeviceDetailPage() {
         }
       } catch (err) {
         if (active) {
-          setError(err instanceof Error ? err.message : 'Failed to load node detail')
+          setError(
+            err instanceof Error ? err.message : 'Failed to load node detail'
+          )
         }
       }
     }
@@ -57,7 +59,10 @@ export default function DeviceDetailPage() {
         cpu: item.cpu_percent,
         ram: item.ram_percent,
       }))
-      .filter((sample) => !Number.isNaN(sample.timestamp) && sample.timestamp >= cutoff)
+      .filter(
+        (sample) =>
+          !Number.isNaN(sample.timestamp) && sample.timestamp >= cutoff
+      )
 
     if (samples.length === 0 && node) {
       return [
@@ -99,11 +104,17 @@ export default function DeviceDetailPage() {
       <section className="charts-grid">
         <LineChart
           title="CPU % (last 5 minutes)"
-          points={history.map((item) => ({ timestamp: item.timestamp, value: item.cpu }))}
+          points={history.map((item) => ({
+            timestamp: item.timestamp,
+            value: item.cpu,
+          }))}
         />
         <LineChart
           title="RAM % (last 5 minutes)"
-          points={history.map((item) => ({ timestamp: item.timestamp, value: item.ram }))}
+          points={history.map((item) => ({
+            timestamp: item.timestamp,
+            value: item.ram,
+          }))}
         />
       </section>
 

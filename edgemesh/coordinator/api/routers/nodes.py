@@ -50,7 +50,11 @@ async def get_node_detail(
     if node is None:
         raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
 
-    history = metrics_history_buffer.get(node_id, history_limit) if include_metrics_history else None
+    history = (
+        metrics_history_buffer.get(node_id, history_limit)
+        if include_metrics_history
+        else None
+    )
     return NodeDetail(node=node, metrics_history=history)
 
 
@@ -67,7 +71,10 @@ async def put_node_policy(
                     "cpu_cap_percent": 85,
                     "gpu_cap_percent": 90,
                     "ram_cap_percent": 80,
-                    "task_allowlist": [TaskType.INFERENCE.value, TaskType.EMBEDDINGS.value],
+                    "task_allowlist": [
+                        TaskType.INFERENCE.value,
+                        TaskType.EMBEDDINGS.value,
+                    ],
                     "role_preference": "PREFER_INFERENCE",
                 },
             }

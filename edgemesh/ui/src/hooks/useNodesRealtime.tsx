@@ -23,10 +23,14 @@ type NodesRealtimeContextValue = {
   saveNodePolicy: (nodeId: string, policy: NodePolicy) => Promise<void>
 }
 
-const NodesRealtimeContext = createContext<NodesRealtimeContextValue | null>(null)
+const NodesRealtimeContext = createContext<NodesRealtimeContextValue | null>(
+  null
+)
 
 function replaceNode(nodes: Node[], updated: Node): Node[] {
-  const index = nodes.findIndex((node) => node.identity.node_id === updated.identity.node_id)
+  const index = nodes.findIndex(
+    (node) => node.identity.node_id === updated.identity.node_id
+  )
   if (index < 0) {
     return [...nodes, updated]
   }
@@ -40,7 +44,8 @@ export function NodesRealtimeProvider({ children }: { children: ReactNode }) {
   const [nodes, setNodes] = useState<Node[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [connectionMode, setConnectionMode] = useState<ConnectionMode>('connecting')
+  const [connectionMode, setConnectionMode] =
+    useState<ConnectionMode>('connecting')
 
   const fetchInFlight = useRef(false)
   const pollingId = useRef<number | null>(null)
@@ -102,7 +107,7 @@ export function NodesRealtimeProvider({ children }: { children: ReactNode }) {
       () => {
         closeStream()
         startPolling()
-      },
+      }
     )
     streamRef.current = stream
 
@@ -121,19 +126,21 @@ export function NodesRealtimeProvider({ children }: { children: ReactNode }) {
                 ...node,
                 policy,
               }
-            : node,
-        ),
+            : node
+        )
       )
 
       try {
         const updated = await updateNodePolicy(nodeId, policy)
         setNodes((current) => replaceNode(current, updated))
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update node policy')
+        setError(
+          err instanceof Error ? err.message : 'Failed to update node policy'
+        )
         await refreshNodes()
       }
     },
-    [refreshNodes],
+    [refreshNodes]
   )
 
   const value = useMemo<NodesRealtimeContextValue>(
@@ -145,16 +152,22 @@ export function NodesRealtimeProvider({ children }: { children: ReactNode }) {
       refreshNodes,
       saveNodePolicy,
     }),
-    [connectionMode, error, loading, nodes, refreshNodes, saveNodePolicy],
+    [connectionMode, error, loading, nodes, refreshNodes, saveNodePolicy]
   )
 
-  return <NodesRealtimeContext.Provider value={value}>{children}</NodesRealtimeContext.Provider>
+  return (
+    <NodesRealtimeContext.Provider value={value}>
+      {children}
+    </NodesRealtimeContext.Provider>
+  )
 }
 
 export function useNodesRealtime(): NodesRealtimeContextValue {
   const context = useContext(NodesRealtimeContext)
   if (context === null) {
-    throw new Error('useNodesRealtime must be used within NodesRealtimeProvider')
+    throw new Error(
+      'useNodesRealtime must be used within NodesRealtimeProvider'
+    )
   }
   return context
 }

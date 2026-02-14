@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from models import NodePolicy, RolePreference, TaskType
+from models import Job, NodePolicy, RolePreference, TaskType
 
 
 def test_node_policy_valid_range() -> None:
@@ -39,3 +39,14 @@ def test_node_policy_defaults_role_preference() -> None:
     )
 
     assert policy.role_preference == RolePreference.AUTO
+
+
+def test_job_model_validation() -> None:
+    job = Job(
+        id="job-1",
+        type=TaskType.TOKENIZE,
+        payload_ref="demo://sample",
+    )
+
+    assert job.status.value == "QUEUED"
+    assert job.attempts == 0

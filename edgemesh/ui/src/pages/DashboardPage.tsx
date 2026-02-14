@@ -21,7 +21,9 @@ export default function DashboardPage() {
         }
       } catch (err) {
         if (active) {
-          setError(err instanceof Error ? err.message : 'Failed to load summary')
+          setError(
+            err instanceof Error ? err.message : 'Failed to load summary'
+          )
         }
       }
     }
@@ -40,9 +42,11 @@ export default function DashboardPage() {
   const topUtilized = useMemo(
     () =>
       [...nodes]
-        .sort((left, right) => right.metrics.cpu_percent - left.metrics.cpu_percent)
+        .sort(
+          (left, right) => right.metrics.cpu_percent - left.metrics.cpu_percent
+        )
         .slice(0, 5),
-    [nodes],
+    [nodes]
   )
 
   return (

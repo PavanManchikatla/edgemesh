@@ -36,6 +36,8 @@ def _extract_task_types(labels: list[str]) -> list[TaskType]:
         "embed": TaskType.EMBEDDINGS,
         "embedding": TaskType.EMBEDDINGS,
         "embeddings": TaskType.EMBEDDINGS,
+        "index": TaskType.INDEX,
+        "tokenize": TaskType.TOKENIZE,
         "preprocess": TaskType.PREPROCESS,
         "preprocessing": TaskType.PREPROCESS,
     }
@@ -49,7 +51,9 @@ def _extract_task_types(labels: list[str]) -> list[TaskType]:
     return task_types
 
 
-def _normalize_task_types(task_types: list[TaskType], labels: list[str]) -> list[TaskType]:
+def _normalize_task_types(
+    task_types: list[TaskType], labels: list[str]
+) -> list[TaskType]:
     normalized: list[TaskType] = []
 
     for task_type in task_types:
@@ -132,7 +136,9 @@ def to_v1_register_from_legacy(payload: AgentRegisterRequest) -> AgentRegisterV1
             cpu_cores=_parse_int(metadata.get("cpu_cores"), 0) or None,
             cpu_threads=_parse_int(metadata.get("cpu_threads"), 0) or None,
             ram_total_gb=_parse_float(metadata.get("ram_total_gb"), 0.0) or None,
-            gpu_name=(str(metadata.get("gpu_name")) if metadata.get("gpu_name") else None),
+            gpu_name=(
+                str(metadata.get("gpu_name")) if metadata.get("gpu_name") else None
+            ),
             vram_total_gb=_parse_float(metadata.get("vram_total_gb"), 0.0) or None,
             os=(str(metadata.get("os")) if metadata.get("os") else None),
             arch=(str(metadata.get("arch")) if metadata.get("arch") else None),
@@ -142,7 +148,9 @@ def to_v1_register_from_legacy(payload: AgentRegisterRequest) -> AgentRegisterV1
     )
 
 
-def to_v1_heartbeat_from_legacy(agent_id: str, payload: HeartbeatRequest) -> AgentHeartbeatV1Request:
+def to_v1_heartbeat_from_legacy(
+    agent_id: str, payload: HeartbeatRequest
+) -> AgentHeartbeatV1Request:
     metrics = payload.metrics
 
     return AgentHeartbeatV1Request(
@@ -151,8 +159,12 @@ def to_v1_heartbeat_from_legacy(agent_id: str, payload: HeartbeatRequest) -> Age
             cpu_percent=float(metrics.get("cpu_percent", 0.0)),
             ram_used_gb=float(metrics.get("ram_used_gb", 0.0)),
             ram_percent=float(metrics.get("ram_percent", 0.0)),
-            gpu_percent=float(metrics["gpu_percent"]) if "gpu_percent" in metrics else None,
-            vram_used_gb=float(metrics["vram_used_gb"]) if "vram_used_gb" in metrics else None,
+            gpu_percent=float(metrics["gpu_percent"])
+            if "gpu_percent" in metrics
+            else None,
+            vram_used_gb=float(metrics["vram_used_gb"])
+            if "vram_used_gb" in metrics
+            else None,
             running_jobs=int(metrics.get("running_jobs", 0.0)),
         ),
     )

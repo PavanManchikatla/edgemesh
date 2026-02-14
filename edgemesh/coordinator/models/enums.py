@@ -11,13 +11,15 @@ class NodeStatus(StrEnum):
 class TaskType(StrEnum):
     INFERENCE = "INFERENCE"
     EMBEDDINGS = "EMBEDDINGS"
+    INDEX = "INDEX"
+    TOKENIZE = "TOKENIZE"
     PREPROCESS = "PREPROCESS"
 
 
 class JobStatus(StrEnum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
-    SUCCEEDED = "SUCCEEDED"
+    COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
 

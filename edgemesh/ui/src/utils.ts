@@ -10,7 +10,10 @@ export function formatNumber(value: number, digits = 1): string {
   return value.toFixed(digits)
 }
 
-export function toPercent(value: number | null, total: number | null): number | null {
+export function toPercent(
+  value: number | null,
+  total: number | null
+): number | null {
   if (value === null || total === null || total <= 0) {
     return null
   }

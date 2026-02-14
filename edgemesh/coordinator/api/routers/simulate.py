@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Body, HTTPException
 
-from api.schemas import CandidateScore, SimulateScheduleRequest, SimulateScheduleResponse
+from api.schemas import (
+    CandidateScore,
+    SimulateScheduleRequest,
+    SimulateScheduleResponse,
+)
 from db import get_nodes
 from models import TaskType
 from scheduler import evaluate_node_eligibility, score_node
@@ -16,6 +20,8 @@ def _parse_task_type(raw: str) -> TaskType:
         "EMBED": TaskType.EMBEDDINGS,
         "EMBEDDING": TaskType.EMBEDDINGS,
         "EMBEDDINGS": TaskType.EMBEDDINGS,
+        "INDEX": TaskType.INDEX,
+        "TOKENIZE": TaskType.TOKENIZE,
         "PREPROCESS": TaskType.PREPROCESS,
         "PREPROCESSING": TaskType.PREPROCESS,
     }
@@ -40,14 +46,12 @@ async def simulate_schedule(
                 "value": {"task_type": "INFER"},
             },
         },
-    )
+    ),
 ) -> SimulateScheduleResponse:
     """Simulate task scheduling and return ranked candidates.
 
-    Response includes:
-    - `chosen_node_id` when at least one node is eligible.
-    - `reason` when no node is eligible.
-    - `ranked_candidates` with scores and ineligibility reasons.
+    Ranking uses weighted scoring from scheduler core: CPU/RAM headroom, GPU headroom,
+    role preference alignment, hardware affinity, and running jobs penalty.
     """
 
     task_type = _parse_task_type(payload.task_type)

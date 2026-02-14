@@ -139,8 +139,8 @@ def collect_metrics() -> dict[str, float | int | None]:
 def _task_types_from_capabilities(capabilities: dict[str, object]) -> list[str]:
     has_gpu = bool(capabilities.get("gpu_name"))
     if has_gpu:
-        return ["INFERENCE", "EMBEDDINGS", "PREPROCESS"]
-    return ["EMBEDDINGS", "PREPROCESS"]
+        return ["INFERENCE", "EMBEDDINGS", "INDEX", "TOKENIZE", "PREPROCESS"]
+    return ["EMBEDDINGS", "INDEX", "TOKENIZE", "PREPROCESS"]
 
 
 def build_register_payload(node_id: str) -> dict[str, object]:
@@ -163,24 +163,40 @@ def build_heartbeat_payload(node_id: str) -> dict[str, object]:
     }
 
 
+def _agent_headers() -> dict[str, str]:
+    if not settings.edge_mesh_shared_secret:
+        return {}
+    return {"X-EdgeMesh-Secret": settings.edge_mesh_shared_secret}
+
+
 async def register(client: httpx.AsyncClient, node_id: str) -> None:
-    response = await client.post("/v1/agent/register", json=build_register_payload(node_id))
+    response = await client.post(
+        "/v1/agent/register", json=build_register_payload(node_id)
+    )
     response.raise_for_status()
 
 
 async def send_heartbeat(client: httpx.AsyncClient, node_id: str) -> None:
-    response = await client.post("/v1/agent/heartbeat", json=build_heartbeat_payload(node_id))
+    response = await client.post(
+        "/v1/agent/heartbeat", json=build_heartbeat_payload(node_id)
+    )
     response.raise_for_status()
 
 
 async def run_agent() -> None:
     node_id = load_or_create_node_id(settings.state_file)
-    logger.info("agent_starting", extra={"node_id": node_id, "settings": asdict(settings)})
+    logger.info(
+        "agent_starting", extra={"node_id": node_id, "settings": asdict(settings)}
+    )
 
     registered = False
     retry_delay = 1.0
 
-    async with httpx.AsyncClient(base_url=settings.coordinator_url, timeout=10.0) as client:
+    async with httpx.AsyncClient(
+        base_url=settings.coordinator_url,
+        timeout=10.0,
+        headers=_agent_headers(),
+    ) as client:
         while True:
             try:
                 if not registered:
@@ -195,7 +211,11 @@ async def run_agent() -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "agent_cycle_failed",
-                    extra={"node_id": node_id, "error": str(exc), "retry_delay_seconds": retry_delay},
+                    extra={
+                        "node_id": node_id,
+                        "error": str(exc),
+                        "retry_delay_seconds": retry_delay,
+                    },
                 )
                 registered = False
                 await asyncio.sleep(retry_delay)

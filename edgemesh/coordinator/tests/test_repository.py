@@ -1,7 +1,15 @@
 from datetime import datetime, timedelta, timezone
 
 from db.repository import CoordinatorRepository
-from models import Job, JobStatus, NodeCapabilities, NodeMetrics, NodePolicy, NodeStatus, TaskType
+from models import (
+    Job,
+    JobStatus,
+    NodeCapabilities,
+    NodeMetrics,
+    NodePolicy,
+    NodeStatus,
+    TaskType,
+)
 
 
 def test_repository_node_crud(tmp_path) -> None:
@@ -69,7 +77,7 @@ def test_repository_node_crud(tmp_path) -> None:
     repo.close()
 
 
-def test_repository_job_crud(tmp_path) -> None:
+def test_repository_job_crud_and_transitions(tmp_path) -> None:
     db_path = tmp_path / "job-test.db"
     repo = CoordinatorRepository(f"sqlite:///{db_path}")
 
@@ -78,7 +86,7 @@ def test_repository_job_crud(tmp_path) -> None:
             id="job-1",
             type=TaskType.EMBEDDINGS,
             status=JobStatus.QUEUED,
-            assigned_node_id=None,
+            payload_ref="demo://payload/1",
         )
     )
 
@@ -88,5 +96,20 @@ def test_repository_job_crud(tmp_path) -> None:
     assert fetched is not None
     assert fetched.type == TaskType.EMBEDDINGS
     assert fetched.status == JobStatus.QUEUED
+    assert fetched.payload_ref == "demo://payload/1"
+    assert fetched.attempts == 0
+
+    running = repo.transition_job_status("job-1", JobStatus.RUNNING)
+    assert running.status == JobStatus.RUNNING
+    assert running.attempts == 1
+    assert running.started_at is not None
+
+    completed = repo.transition_job_status("job-1", JobStatus.COMPLETED)
+    assert completed.status == JobStatus.COMPLETED
+    assert completed.completed_at is not None
+
+    rows = repo.list_jobs(status=JobStatus.COMPLETED)
+    assert len(rows) == 1
+    assert rows[0].id == "job-1"
 
     repo.close()

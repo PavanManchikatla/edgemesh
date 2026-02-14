@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { Node, NodePolicy, RolePreference, TaskType } from '../types'
 
-const TASK_TYPES: TaskType[] = ['INFERENCE', 'EMBEDDINGS', 'PREPROCESS']
+const TASK_TYPES: TaskType[] = [
+  'INFERENCE',
+  'EMBEDDINGS',
+  'INDEX',
+  'TOKENIZE',
+  'PREPROCESS',
+]
 const ROLE_OPTIONS: RolePreference[] = [
   'AUTO',
   'PREFER_INFERENCE',

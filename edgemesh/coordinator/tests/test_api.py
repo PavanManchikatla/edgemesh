@@ -3,12 +3,17 @@ import importlib
 import pytest
 from fastapi.testclient import TestClient
 
+SHARED_SECRET = "test-shared-secret"
+
 
 @pytest.fixture()
-def client(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def client(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> TestClient:
     db_path = tmp_path / "api-test.db"
     monkeypatch.setenv("COORDINATOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("NODE_STALE_SECONDS", "15")
+    monkeypatch.setenv("EDGE_MESH_SHARED_SECRET", SHARED_SECRET)
 
     from coordinator_service import main as main_module
 
@@ -17,9 +22,14 @@ def client(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) ->
         yield test_client
 
 
+def _agent_headers() -> dict[str, str]:
+    return {"X-EdgeMesh-Secret": SHARED_SECRET}
+
+
 def _register_agent_legacy(client: TestClient, agent_id: str = "agent-1") -> None:
     response = client.post(
         "/api/agents/register",
+        headers=_agent_headers(),
         json={
             "agent_id": agent_id,
             "capabilities": ["inference", "gpu"],
@@ -33,9 +43,12 @@ def _register_agent_legacy(client: TestClient, agent_id: str = "agent-1") -> Non
     assert response.status_code == 201
 
 
-def _heartbeat_agent_legacy(client: TestClient, agent_id: str = "agent-1", cpu_percent: float = 45.5) -> None:
+def _heartbeat_agent_legacy(
+    client: TestClient, agent_id: str = "agent-1", cpu_percent: float = 45.5
+) -> None:
     response = client.post(
         f"/api/agents/{agent_id}/heartbeat",
+        headers=_agent_headers(),
         json={
             "status": "healthy",
             "metrics": {
@@ -49,33 +62,47 @@ def _heartbeat_agent_legacy(client: TestClient, agent_id: str = "agent-1", cpu_p
     assert response.status_code == 202
 
 
-def _register_agent_v1(client: TestClient, node_id: str = "node-1") -> None:
+def _register_agent_v1(
+    client: TestClient, node_id: str = "node-1", has_gpu: bool = True
+) -> None:
+    capabilities: dict[str, object] = {
+        "cpu_cores": 8,
+        "cpu_threads": 16,
+        "ram_total_gb": 32,
+        "os": "linux",
+        "arch": "x86_64",
+        "task_types": ["INFERENCE", "EMBEDDINGS", "INDEX", "TOKENIZE", "PREPROCESS"],
+        "labels": ["inference"],
+    }
+    if has_gpu:
+        capabilities.update(
+            {
+                "gpu_name": "NVIDIA L4",
+                "vram_total_gb": 24,
+                "labels": ["gpu", "inference"],
+            }
+        )
+
     response = client.post(
         "/v1/agent/register",
+        headers=_agent_headers(),
         json={
             "node_id": node_id,
             "display_name": "Edge Node",
             "ip": "10.0.0.5",
             "port": 9100,
-            "capabilities": {
-                "cpu_cores": 8,
-                "cpu_threads": 16,
-                "ram_total_gb": 32,
-                "gpu_name": "NVIDIA L4",
-                "vram_total_gb": 24,
-                "os": "linux",
-                "arch": "x86_64",
-                "task_types": ["INFERENCE", "EMBEDDINGS"],
-                "labels": ["gpu", "inference"],
-            },
+            "capabilities": capabilities,
         },
     )
     assert response.status_code == 201
 
 
-def _heartbeat_agent_v1(client: TestClient, node_id: str = "node-1", cpu_percent: float = 34.0) -> None:
+def _heartbeat_agent_v1(
+    client: TestClient, node_id: str = "node-1", cpu_percent: float = 34.0
+) -> None:
     response = client.post(
         "/v1/agent/heartbeat",
+        headers=_agent_headers(),
         json={
             "node_id": node_id,
             "metrics": {
@@ -96,6 +123,20 @@ def test_health_check(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_agent_auth_rejects_missing_secret(client: TestClient) -> None:
+    response = client.post(
+        "/v1/agent/register",
+        json={
+            "node_id": "unauthorized-node",
+            "display_name": "Unauthorized",
+            "ip": "127.0.0.1",
+            "port": 9000,
+            "capabilities": {"cpu_cores": 2, "cpu_threads": 4, "ram_total_gb": 8},
+        },
+    )
+    assert response.status_code == 401
 
 
 def test_register_and_heartbeat_flow_legacy(client: TestClient) -> None:
@@ -189,7 +230,9 @@ def test_schedule_ineligible_with_low_cpu_cap(client: TestClient) -> None:
     )
     assert policy_response.status_code == 200
 
-    schedule_response = client.post("/v1/simulate/schedule", json={"task_type": "INFER"})
+    schedule_response = client.post(
+        "/v1/simulate/schedule", json={"task_type": "INFER"}
+    )
     assert schedule_response.status_code == 200
 
     payload = schedule_response.json()
@@ -198,6 +241,53 @@ def test_schedule_ineligible_with_low_cpu_cap(client: TestClient) -> None:
     assert len(payload["ranked_candidates"]) == 1
     assert payload["ranked_candidates"][0]["eligible"] is False
     assert "cpu_over_cap" in payload["ranked_candidates"][0]["reasons"]
+
+
+def test_simulate_prefers_gpu_for_infer(client: TestClient) -> None:
+    _register_agent_v1(client, node_id="gpu-node", has_gpu=True)
+    _register_agent_v1(client, node_id="cpu-node", has_gpu=False)
+    _heartbeat_agent_v1(client, node_id="gpu-node", cpu_percent=20.0)
+    _heartbeat_agent_v1(client, node_id="cpu-node", cpu_percent=20.0)
+
+    client.put(
+        "/v1/nodes/gpu-node/policy",
+        json={
+            "enabled": True,
+            "cpu_cap_percent": 100,
+            "gpu_cap_percent": 100,
+            "ram_cap_percent": 100,
+            "task_allowlist": [
+                "INFERENCE",
+                "EMBEDDINGS",
+                "INDEX",
+                "TOKENIZE",
+                "PREPROCESS",
+            ],
+            "role_preference": "AUTO",
+        },
+    )
+    client.put(
+        "/v1/nodes/cpu-node/policy",
+        json={
+            "enabled": True,
+            "cpu_cap_percent": 100,
+            "gpu_cap_percent": None,
+            "ram_cap_percent": 100,
+            "task_allowlist": [
+                "INFERENCE",
+                "EMBEDDINGS",
+                "INDEX",
+                "TOKENIZE",
+                "PREPROCESS",
+            ],
+            "role_preference": "PREFER_EMBEDDINGS",
+        },
+    )
+
+    infer_response = client.post("/v1/simulate/schedule", json={"task_type": "INFER"})
+    assert infer_response.status_code == 200
+    infer_payload = infer_response.json()
+    assert infer_payload["chosen_node_id"] == "gpu-node"
 
 
 def test_cluster_summary_updates_when_policy_changes(client: TestClient) -> None:
@@ -216,7 +306,13 @@ def test_cluster_summary_updates_when_policy_changes(client: TestClient) -> None
             "cpu_cap_percent": 50,
             "gpu_cap_percent": 100,
             "ram_cap_percent": 100,
-            "task_allowlist": ["INFERENCE", "EMBEDDINGS", "PREPROCESS"],
+            "task_allowlist": [
+                "INFERENCE",
+                "EMBEDDINGS",
+                "INDEX",
+                "TOKENIZE",
+                "PREPROCESS",
+            ],
             "role_preference": "AUTO",
         },
     )
@@ -226,3 +322,71 @@ def test_cluster_summary_updates_when_policy_changes(client: TestClient) -> None
     assert summary_after.status_code == 200
     after_payload = summary_after.json()
     assert after_payload["total_effective_cpu_threads"] == 8.0
+
+
+def test_jobs_crud_filters_and_transitions(client: TestClient) -> None:
+    _register_agent_v1(client, node_id="jobs-node")
+    _heartbeat_agent_v1(client, node_id="jobs-node", cpu_percent=18.0)
+
+    created_embed = client.post(
+        "/v1/jobs",
+        json={"task_type": "EMBED", "payload_ref": "demo://payload/embed-01"},
+    )
+    assert created_embed.status_code == 201
+    embed_job = created_embed.json()
+
+    created_infer = client.post(
+        "/v1/jobs",
+        json={"task_type": "INFER", "payload_ref": "demo://payload/infer-01"},
+    )
+    assert created_infer.status_code == 201
+    infer_job = created_infer.json()
+
+    list_all = client.get("/v1/jobs")
+    assert list_all.status_code == 200
+    assert len(list_all.json()) == 2
+
+    list_embed = client.get("/v1/jobs", params={"task_type": "EMBED"})
+    assert list_embed.status_code == 200
+    assert len(list_embed.json()) == 1
+    assert list_embed.json()[0]["id"] == embed_job["id"]
+
+    detail = client.get(f"/v1/jobs/{embed_job['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["payload_ref"] == "demo://payload/embed-01"
+
+    to_running = client.post(
+        f"/v1/jobs/{embed_job['id']}/status", json={"status": "RUNNING"}
+    )
+    assert to_running.status_code == 200
+    assert to_running.json()["status"] == "RUNNING"
+    assert to_running.json()["attempts"] == 1
+
+    to_completed = client.post(
+        f"/v1/jobs/{embed_job['id']}/status", json={"status": "COMPLETED"}
+    )
+    assert to_completed.status_code == 200
+    assert to_completed.json()["status"] == "COMPLETED"
+
+    invalid_transition = client.post(
+        f"/v1/jobs/{infer_job['id']}/status",
+        json={"status": "COMPLETED"},
+    )
+    assert invalid_transition.status_code == 409
+
+
+def test_demo_embed_burst_populates_jobs(client: TestClient) -> None:
+    _register_agent_v1(client, node_id="demo-node")
+    _heartbeat_agent_v1(client, node_id="demo-node", cpu_percent=12.0)
+
+    response = client.post("/v1/demo/jobs/create-embed-burst", params={"count": 6})
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["created_count"] == 6
+    assert len(payload["jobs"]) == 6
+    assert payload["assigned_count"] >= 1
+
+    list_response = client.get("/v1/jobs")
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 6

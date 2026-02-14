@@ -1,0 +1,11 @@
+BEGIN;
+
+ALTER TABLE jobs ADD COLUMN payload_ref TEXT;
+ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN started_at DATETIME;
+ALTER TABLE jobs ADD COLUMN completed_at DATETIME;
+
+CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type);
+CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);
+
+COMMIT;

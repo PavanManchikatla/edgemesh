@@ -1,7 +1,21 @@
 import { Link } from 'react-router-dom'
 import PolicyControls from '../components/PolicyControls'
 import { useNodesRealtime } from '../hooks/useNodesRealtime'
+import type { RolePreference } from '../types'
 import { formatNumber, secondsSince, toPercent } from '../utils'
+
+function recommendedLabel(rolePreference: RolePreference): string {
+  switch (rolePreference) {
+    case 'PREFER_INFERENCE':
+      return 'Recommended for INFER'
+    case 'PREFER_EMBEDDINGS':
+      return 'Recommended for EMBED/INDEX'
+    case 'PREFER_PREPROCESS':
+      return 'Recommended for PREPROCESS/TOKENIZE'
+    default:
+      return 'Recommended for AUTO'
+  }
+}
 
 export default function DevicesPage() {
   const { nodes, loading, error, saveNodePolicy } = useNodesRealtime()
@@ -17,19 +31,32 @@ export default function DevicesPage() {
 
       <section className="devices-grid">
         {nodes.map((node) => {
-          const vramPercent = toPercent(node.metrics.vram_used_gb, node.capabilities.vram_total_gb)
+          const vramPercent = toPercent(
+            node.metrics.vram_used_gb,
+            node.capabilities.vram_total_gb
+          )
 
           return (
-            <article key={node.identity.node_id} className="surface device-card">
+            <article
+              key={node.identity.node_id}
+              className="surface device-card"
+            >
               <div className="device-card-head">
                 <h2>
-                  <Link to={`/devices/${encodeURIComponent(node.identity.node_id)}`}>
+                  <Link
+                    to={`/devices/${encodeURIComponent(node.identity.node_id)}`}
+                  >
                     {node.identity.display_name}
                   </Link>
                 </h2>
                 <span className="status-pill">{node.status}</span>
               </div>
 
+              <p>
+                <span className="recommend-chip">
+                  {recommendedLabel(node.policy.role_preference)}
+                </span>
+              </p>
               <p>Last heartbeat age: {secondsSince(node.last_seen)}s</p>
               <p>
                 Capabilities: {node.capabilities.cpu_threads ?? '-'} threads,{' '}
@@ -44,7 +71,9 @@ export default function DevicesPage() {
                 {node.metrics.gpu_percent !== null
                   ? `, GPU ${formatNumber(node.metrics.gpu_percent, 1)}%`
                   : ''}
-                {vramPercent !== null ? `, VRAM ${formatNumber(vramPercent, 1)}%` : ''}
+                {vramPercent !== null
+                  ? `, VRAM ${formatNumber(vramPercent, 1)}%`
+                  : ''}
               </p>
               <p>Running jobs: {node.metrics.running_jobs}</p>
 

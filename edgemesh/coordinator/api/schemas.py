@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
-from models import TaskType
+from models import Job, JobStatus, TaskType
 
 
 class AgentCapabilitiesPayload(BaseModel):
@@ -69,3 +69,23 @@ class ClusterSummaryResponse(BaseModel):
     total_effective_ram_gb: float
     total_effective_vram_gb: float
     active_running_jobs_total: int
+
+
+class JobCreateRequest(BaseModel):
+    task_type: str = Field(min_length=1, max_length=64)
+    payload_ref: str | None = Field(default=None, max_length=512)
+
+
+class JobStatusUpdateRequest(BaseModel):
+    status: JobStatus
+    error: str | None = Field(default=None, max_length=2048)
+
+
+class DemoJobBurstResponse(BaseModel):
+    created_count: int
+    assigned_count: int
+    queued_count: int
+    running_count: int
+    completed_count: int
+    failed_count: int
+    jobs: list[Job] = Field(default_factory=list)

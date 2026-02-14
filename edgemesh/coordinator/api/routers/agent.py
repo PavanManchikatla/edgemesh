@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Body, status
+from fastapi import APIRouter, Body, Depends, status
 
+from api.auth import require_agent_secret
 from api.schemas import AgentHeartbeatV1Request, AgentRegisterV1Request
 from api.services import heartbeat_agent_v1, register_agent_v1
 from models import Node, NodeUpdateEvent, TaskType
@@ -7,7 +8,12 @@ from models import Node, NodeUpdateEvent, TaskType
 router = APIRouter(prefix="/v1/agent", tags=["agent"])
 
 
-@router.post("/register", response_model=Node, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=Node,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_agent_secret)],
+)
 async def register_agent(
     payload: AgentRegisterV1Request = Body(
         ...,
@@ -27,13 +33,16 @@ async def register_agent(
                         "vram_total_gb": 24,
                         "os": "linux",
                         "arch": "x86_64",
-                        "task_types": [TaskType.INFERENCE.value, TaskType.EMBEDDINGS.value],
+                        "task_types": [
+                            TaskType.INFERENCE.value,
+                            TaskType.EMBEDDINGS.value,
+                        ],
                         "labels": ["gpu", "inference"],
                     },
                 },
             }
         },
-    )
+    ),
 ) -> Node:
     """Register or update an agent identity and capabilities.
 
@@ -43,7 +52,12 @@ async def register_agent(
     return register_agent_v1(payload)
 
 
-@router.post("/heartbeat", response_model=NodeUpdateEvent, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/heartbeat",
+    response_model=NodeUpdateEvent,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_agent_secret)],
+)
 async def post_heartbeat(
     payload: AgentHeartbeatV1Request = Body(
         ...,
@@ -63,7 +77,7 @@ async def post_heartbeat(
                 },
             }
         },
-    )
+    ),
 ) -> NodeUpdateEvent:
     """Accept a node heartbeat and broadcast SSE node_update event.
 

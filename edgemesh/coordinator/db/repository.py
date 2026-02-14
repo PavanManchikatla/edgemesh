@@ -23,7 +23,9 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _as_utc(dt: datetime) -> datetime:
+def _as_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
@@ -31,6 +33,15 @@ def _as_utc(dt: datetime) -> datetime:
 
 def _encode_json(value: dict[str, object]) -> str:
     return json.dumps(value, separators=(",", ":"), default=str)
+
+
+_ALLOWED_JOB_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
+    JobStatus.QUEUED: {JobStatus.RUNNING},
+    JobStatus.RUNNING: {JobStatus.COMPLETED, JobStatus.FAILED},
+    JobStatus.COMPLETED: set(),
+    JobStatus.FAILED: set(),
+    JobStatus.CANCELLED: set(),
+}
 
 
 class CoordinatorRepository:
@@ -41,7 +52,9 @@ class CoordinatorRepository:
             future=True,
             connect_args={"check_same_thread": False},
         )
-        self._session_factory = sessionmaker(bind=self._engine, autoflush=False, expire_on_commit=False)
+        self._session_factory = sessionmaker(
+            bind=self._engine, autoflush=False, expire_on_commit=False
+        )
 
     def _default_capabilities(self) -> NodeCapabilities:
         return NodeCapabilities()
@@ -64,7 +77,9 @@ class CoordinatorRepository:
             ip="0.0.0.0",
             port=0,
             status=NodeStatus.UNKNOWN.value,
-            capabilities_json=_encode_json(self._default_capabilities().model_dump(mode="json")),
+            capabilities_json=_encode_json(
+                self._default_capabilities().model_dump(mode="json")
+            ),
             metrics_json=_encode_json(self._default_metrics().model_dump(mode="json")),
             policy_json=_encode_json(self._default_policy().model_dump(mode="json")),
             last_seen=now,
@@ -82,7 +97,9 @@ class CoordinatorRepository:
             ip=row.ip,
             port=row.port,
         )
-        capabilities = NodeCapabilities.model_validate(json.loads(row.capabilities_json))
+        capabilities = NodeCapabilities.model_validate(
+            json.loads(row.capabilities_json)
+        )
         metrics = NodeMetrics.model_validate(json.loads(row.metrics_json))
         policy = NodePolicy.model_validate(json.loads(row.policy_json))
 
@@ -92,9 +109,9 @@ class CoordinatorRepository:
             metrics=metrics,
             policy=policy,
             status=NodeStatus(row.status),
-            last_seen=_as_utc(row.last_seen),
-            created_at=_as_utc(row.created_at),
-            updated_at=_as_utc(row.updated_at),
+            last_seen=_as_utc(row.last_seen) or _utc_now(),
+            created_at=_as_utc(row.created_at) or _utc_now(),
+            updated_at=_as_utc(row.updated_at) or _utc_now(),
         )
 
     def _to_job(self, row: JobRecord) -> Job:
@@ -102,13 +119,19 @@ class CoordinatorRepository:
             id=row.id,
             type=TaskType(row.type),
             status=JobStatus(row.status),
+            payload_ref=row.payload_ref,
             assigned_node_id=row.assigned_node_id,
-            created_at=_as_utc(row.created_at),
-            updated_at=_as_utc(row.updated_at),
+            attempts=row.attempts,
+            created_at=_as_utc(row.created_at) or _utc_now(),
+            updated_at=_as_utc(row.updated_at) or _utc_now(),
+            started_at=_as_utc(row.started_at),
+            completed_at=_as_utc(row.completed_at),
             error=row.error,
         )
 
-    def upsert_node_identity(self, node_id: str, display_name: str, ip: str, port: int) -> Node:
+    def upsert_node_identity(
+        self, node_id: str, display_name: str, ip: str, port: int
+    ) -> Node:
         now = _utc_now()
         with self._session_factory.begin() as session:
             node = self._ensure_node(session, node_id)
@@ -119,7 +142,9 @@ class CoordinatorRepository:
             session.flush()
             return self._to_node(node)
 
-    def upsert_node_capabilities(self, node_id: str, capabilities: NodeCapabilities | dict[str, object]) -> Node:
+    def upsert_node_capabilities(
+        self, node_id: str, capabilities: NodeCapabilities | dict[str, object]
+    ) -> Node:
         now = _utc_now()
         payload = NodeCapabilities.model_validate(capabilities)
 
@@ -130,7 +155,9 @@ class CoordinatorRepository:
             session.flush()
             return self._to_node(node)
 
-    def update_node_metrics(self, node_id: str, metrics: NodeMetrics | dict[str, object]) -> Node:
+    def update_node_metrics(
+        self, node_id: str, metrics: NodeMetrics | dict[str, object]
+    ) -> Node:
         now = _utc_now()
         payload = NodeMetrics.model_validate(metrics)
 
@@ -145,7 +172,9 @@ class CoordinatorRepository:
 
     def get_nodes(self) -> list[Node]:
         with self._session_factory() as session:
-            rows = session.scalars(select(NodeRecord).order_by(NodeRecord.node_id.asc())).all()
+            rows = session.scalars(
+                select(NodeRecord).order_by(NodeRecord.node_id.asc())
+            ).all()
             return [self._to_node(row) for row in rows]
 
     def get_node(self, node_id: str) -> Node | None:
@@ -155,7 +184,9 @@ class CoordinatorRepository:
                 return None
             return self._to_node(row)
 
-    def update_node_policy(self, node_id: str, policy: NodePolicy | dict[str, object]) -> Node:
+    def update_node_policy(
+        self, node_id: str, policy: NodePolicy | dict[str, object]
+    ) -> Node:
         now = _utc_now()
         payload = NodePolicy.model_validate(policy)
 
@@ -174,7 +205,9 @@ class CoordinatorRepository:
         with self._session_factory.begin() as session:
             rows = session.scalars(select(NodeRecord)).all()
             for node in rows:
-                if _as_utc(node.last_seen) < cutoff and node.status != NodeStatus.OFFLINE.value:
+                if (
+                    _as_utc(node.last_seen) or now
+                ) < cutoff and node.status != NodeStatus.OFFLINE.value:
                     node.status = NodeStatus.OFFLINE.value
                     node.updated_at = now
                     session.flush()
@@ -185,27 +218,101 @@ class CoordinatorRepository:
     def mark_offline_if_stale(self, stale_seconds: int) -> int:
         return len(self.mark_offline_if_stale_nodes(stale_seconds=stale_seconds))
 
-    def create_job(self, job: Job) -> Job:
+    def create_job(self, job: Job | dict[str, object]) -> Job:
         payload = Job.model_validate(job)
         with self._session_factory.begin() as session:
             row = JobRecord(
                 id=payload.id,
                 type=payload.type.value,
                 status=payload.status.value,
+                payload_ref=payload.payload_ref,
                 assigned_node_id=payload.assigned_node_id,
+                attempts=payload.attempts,
                 created_at=payload.created_at,
                 updated_at=payload.updated_at,
+                started_at=payload.started_at,
+                completed_at=payload.completed_at,
                 error=payload.error,
             )
             session.add(row)
             session.flush()
             return self._to_job(row)
 
+    def list_jobs(
+        self,
+        status: JobStatus | None = None,
+        task_type: TaskType | None = None,
+        node_id: str | None = None,
+    ) -> list[Job]:
+        stmt = select(JobRecord)
+        if status is not None:
+            stmt = stmt.where(JobRecord.status == status.value)
+        if task_type is not None:
+            stmt = stmt.where(JobRecord.type == task_type.value)
+        if node_id is not None:
+            stmt = stmt.where(JobRecord.assigned_node_id == node_id)
+        stmt = stmt.order_by(JobRecord.created_at.desc(), JobRecord.id.asc())
+
+        with self._session_factory() as session:
+            rows = session.scalars(stmt).all()
+            return [self._to_job(row) for row in rows]
+
     def get_job(self, job_id: str) -> Job | None:
         with self._session_factory() as session:
             row = session.get(JobRecord, job_id)
             if row is None:
                 return None
+            return self._to_job(row)
+
+    def assign_job(self, job_id: str, node_id: str | None) -> Job:
+        now = _utc_now()
+        with self._session_factory.begin() as session:
+            row = session.get(JobRecord, job_id)
+            if row is None:
+                raise KeyError(job_id)
+            row.assigned_node_id = node_id
+            row.updated_at = now
+            session.flush()
+            return self._to_job(row)
+
+    def transition_job_status(
+        self, job_id: str, new_status: JobStatus, error: str | None = None
+    ) -> Job:
+        now = _utc_now()
+
+        with self._session_factory.begin() as session:
+            row = session.get(JobRecord, job_id)
+            if row is None:
+                raise KeyError(job_id)
+
+            current_status = JobStatus(row.status)
+            if current_status == new_status:
+                if error is not None:
+                    row.error = error
+                    row.updated_at = now
+                    session.flush()
+                return self._to_job(row)
+
+            if new_status not in _ALLOWED_JOB_TRANSITIONS[current_status]:
+                raise ValueError(
+                    f"Invalid transition from {current_status.value} to {new_status.value}"
+                )
+
+            row.status = new_status.value
+            row.updated_at = now
+
+            if new_status == JobStatus.RUNNING:
+                row.started_at = row.started_at or now
+                row.attempts = (row.attempts or 0) + 1
+                row.error = None
+            elif new_status == JobStatus.COMPLETED:
+                row.completed_at = now
+                row.error = None
+            elif new_status == JobStatus.FAILED:
+                row.completed_at = now
+                row.error = error or row.error or "Job failed"
+
+            session.flush()
             return self._to_job(row)
 
     def close(self) -> None:
@@ -231,7 +338,9 @@ def upsert_node_identity(node_id: str, display_name: str, ip: str, port: int) ->
     return get_repository().upsert_node_identity(node_id, display_name, ip, port)
 
 
-def upsert_node_capabilities(node_id: str, capabilities: NodeCapabilities | dict[str, object]) -> Node:
+def upsert_node_capabilities(
+    node_id: str, capabilities: NodeCapabilities | dict[str, object]
+) -> Node:
     return get_repository().upsert_node_capabilities(node_id, capabilities)
 
 
@@ -257,3 +366,33 @@ def mark_offline_if_stale(stale_seconds: int) -> int:
 
 def mark_offline_if_stale_nodes(stale_seconds: int) -> list[Node]:
     return get_repository().mark_offline_if_stale_nodes(stale_seconds)
+
+
+def create_job(job: Job | dict[str, object]) -> Job:
+    return get_repository().create_job(job)
+
+
+def list_jobs(
+    status: JobStatus | None = None,
+    task_type: TaskType | None = None,
+    node_id: str | None = None,
+) -> list[Job]:
+    return get_repository().list_jobs(
+        status=status, task_type=task_type, node_id=node_id
+    )
+
+
+def get_job(job_id: str) -> Job | None:
+    return get_repository().get_job(job_id)
+
+
+def assign_job(job_id: str, node_id: str | None) -> Job:
+    return get_repository().assign_job(job_id=job_id, node_id=node_id)
+
+
+def transition_job_status(
+    job_id: str, new_status: JobStatus, error: str | None = None
+) -> Job:
+    return get_repository().transition_job_status(
+        job_id=job_id, new_status=new_status, error=error
+    )

@@ -4,15 +4,17 @@ from contextlib import suppress
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, status
+from fastapi import Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from api.auth import require_agent_secret
 from api.routers import (
     agent_router,
     cluster_router,
     health_router,
+    jobs_router,
     nodes_router,
     simulate_router,
     stream_router,
@@ -52,19 +54,23 @@ app.include_router(stream_router)
 app.include_router(agent_router)
 app.include_router(cluster_router)
 app.include_router(simulate_router)
+app.include_router(jobs_router)
 
 
 @app.on_event("startup")
 async def startup() -> None:
     global _stale_monitor_task
     init_repository(settings.db_url)
-    _stale_monitor_task = asyncio.create_task(stale_node_monitor(settings.node_stale_seconds))
+    _stale_monitor_task = asyncio.create_task(
+        stale_node_monitor(settings.node_stale_seconds)
+    )
     logger.info(
         "repository_initialized",
         extra={
             "db_url": settings.db_url,
             "node_stale_seconds": settings.node_stale_seconds,
             "offline_scan_interval_seconds": 5,
+            "agent_secret_enabled": bool(settings.edge_mesh_shared_secret),
         },
     )
 
@@ -80,19 +86,29 @@ async def shutdown() -> None:
 
 
 @app.post("/api/agents/register", status_code=status.HTTP_201_CREATED)
-async def register_agent_legacy(payload: AgentRegisterRequest) -> dict[str, bool]:
+async def register_agent_legacy(
+    payload: AgentRegisterRequest,
+    _: None = Depends(require_agent_secret),
+) -> dict[str, bool]:
     v1_payload = to_v1_register_from_legacy(payload)
     register_agent_v1(v1_payload)
 
     logger.info(
         "agent_registered",
-        extra={"node_id": v1_payload.node_id, "capabilities": v1_payload.capabilities.labels},
+        extra={
+            "node_id": v1_payload.node_id,
+            "capabilities": v1_payload.capabilities.labels,
+        },
     )
     return {"ok": True}
 
 
 @app.post("/api/agents/{agent_id}/heartbeat", status_code=status.HTTP_202_ACCEPTED)
-async def post_heartbeat_legacy(agent_id: str, payload: HeartbeatRequest) -> dict[str, bool]:
+async def post_heartbeat_legacy(
+    agent_id: str,
+    payload: HeartbeatRequest,
+    _: None = Depends(require_agent_secret),
+) -> dict[str, bool]:
     v1_payload = to_v1_heartbeat_from_legacy(agent_id=agent_id, payload=payload)
     await heartbeat_agent_v1(v1_payload)
 

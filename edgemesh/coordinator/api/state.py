@@ -24,7 +24,9 @@ class NodeEventBus:
 
     async def publish(self, event: NodeUpdateEvent) -> None:
         async with self._lock:
-            subscribers: Iterable[asyncio.Queue[NodeUpdateEvent]] = tuple(self._subscribers)
+            subscribers: Iterable[asyncio.Queue[NodeUpdateEvent]] = tuple(
+                self._subscribers
+            )
 
         for queue in subscribers:
             if queue.full():

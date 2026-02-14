@@ -1,5 +1,16 @@
 export type NodeStatus = 'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'DEGRADED'
-export type TaskType = 'INFERENCE' | 'EMBEDDINGS' | 'PREPROCESS'
+export type TaskType =
+  | 'INFERENCE'
+  | 'EMBEDDINGS'
+  | 'INDEX'
+  | 'TOKENIZE'
+  | 'PREPROCESS'
+export type JobStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
 export type RolePreference =
   | 'AUTO'
   | 'PREFER_INFERENCE'
@@ -78,4 +89,28 @@ export type ClusterSummary = {
   total_effective_ram_gb: number
   total_effective_vram_gb: number
   active_running_jobs_total: number
+}
+
+export type Job = {
+  id: string
+  type: TaskType
+  status: JobStatus
+  payload_ref: string | null
+  assigned_node_id: string | null
+  attempts: number
+  created_at: string
+  updated_at: string
+  started_at: string | null
+  completed_at: string | null
+  error: string | null
+}
+
+export type DemoJobBurstResponse = {
+  created_count: number
+  assigned_count: number
+  queued_count: number
+  running_count: number
+  completed_count: number
+  failed_count: number
+  jobs: Job[]
 }
