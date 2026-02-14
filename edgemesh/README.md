@@ -40,12 +40,12 @@ npm install
 
 ## Run (single command per terminal window)
 
-Use these exact one-liners in three separate terminal windows:
+Use these exact one-liners in three separate terminal windows in the project repo:
 
 ```bash
-cd /Users/pavanmanchikatla/Documents/Newproject/edgemesh && make coordinator-dev
-cd /Users/pavanmanchikatla/Documents/Newproject/edgemesh && make agent-dev
-cd /Users/pavanmanchikatla/Documents/Newproject/edgemesh && make ui-dev
+make coordinator-dev
+make agent-dev
+make ui-dev
 ```
 
 Open [http://localhost:5173/devices](http://localhost:5173/devices).
